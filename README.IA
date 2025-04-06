@@ -1,0 +1,994 @@
+O objetivo é criar um sistema CRUD multiplataforma (iOS, Android, macOS e Web) para gerenciar sua coleção física de jogos, consoles e acessórios. Vamos detalhar cada parte do projeto para atender aos seus requisitos.
+
+---
+
+## **Visão Geral do Projeto**
+
+O sistema será um aplicativo Flutter que:
+- Funciona em iOS, Android, macOS e Web.
+- Permite cadastrar e consultar consoles, jogos e acessórios.
+- Usa uma API gratuita de jogos para buscar informações como nome, capa e data de lançamento.
+- Armazena dados localmente com a possibilidade de importar/exportar em JSON.
+- Inclui campos personalizados como nota pessoal, data de compra, data de finalização e última vez que jogou/testou.
+
+---
+
+## **1. Configuração Inicial**
+
+### **Criação do Projeto**
+Crie um novo projeto Flutter e habilite o suporte para todas as plataformas desejadas:
+
+```bash
+flutter create meu_projeto
+cd meu_projeto
+flutter config --enable-macos-desktop
+flutter config --enable-web
+```
+
+Certifique-se de que o ambiente Flutter esteja configurado corretamente para iOS, Android, macOS e Web.
+
+### **Dependências**
+Adicione as dependências necessárias no arquivo `pubspec.yaml`:
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.0.0+3        # Banco de dados local
+  path: ^1.8.0            # Manipulação de caminhos
+  path_provider: ^2.0.0   # Acesso ao sistema de arquivos
+  http: ^0.13.0           # Requisições HTTP para a API
+```
+
+Execute `flutter pub get` para instalar as dependências.
+
+---
+
+## **2. Estrutura do Projeto**
+
+Organize o código em pastas para facilitar a manutenção:
+
+```
+lib/
+├── models/                # Modelos de dados
+│   ├── console.dart
+│   ├── jogo.dart
+│   ├── acessorio.dart
+├── services/              # Serviços (API e banco de dados)
+│   ├── api_service.dart
+│   ├── database_service.dart
+├── screens/               # Telas do aplicativo
+│   ├── home_screen.dart
+│   ├── console_screen.dart
+│   ├── jogo_screen.dart
+│   ├── acessorio_screen.dart
+│   ├── import_export_screen.dart
+├── widgets/               # Componentes reutilizáveis
+│   ├── console_form.dart
+│   ├── jogo_form.dart
+│   ├── acessorio_form.dart
+├── main.dart              # Ponto de entrada
+```
+
+---
+
+## **3. Modelos de Dados**
+
+Defina os modelos para representar consoles, jogos e acessórios.
+
+### **console.dart**
+```dart
+class Console {
+  String id;
+  String nome;
+  String foto;
+  DateTime? dataLancamento;
+
+  Console({
+    required this.id,
+    required this.nome,
+    this.foto = '',
+    this.dataLancamento,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'nome': nome,
+      'foto': foto,
+      'dataLancamento': dataLancamento?.toIso8601String(),
+    };
+  }
+
+  factory Console.fromMap(Map<String, dynamic> map) {
+    return Console(
+      id: map['id'],
+      nome: map['nome'],
+      foto: map['foto'],
+      dataLancamento: map['dataLancamento'] != null
+          ? DateTime.parse(map['dataLancamento'])
+          : null,
+    );
+  }
+}
+```
+
+### **jogo.dart**
+```dart
+class Jogo {
+  String id;
+  String nome;
+  String capa;
+  DateTime? dataLancamento;
+  String consoleId;
+  double notaPessoal;
+  DateTime? dataCompra;
+  DateTime? dataFinalizado;
+  DateTime? ultimaVezJogado;
+
+  Jogo({
+    required this.id,
+    required this.nome,
+    this.capa = '',
+    this.dataLancamento,
+    required this.consoleId,
+    this.notaPessoal = 0.0,
+    this.dataCompra,
+    this.dataFinalizado,
+    this.ultimaVezJogado,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'nome': nome,
+      'capa': capa,
+      'dataLancamento': dataLancamento?.toIso8601String(),
+      'consoleId': consoleId,
+      'notaPessoal': notaPessoal,
+      'dataCompra': dataCompra?.toIso8601String(),
+      'dataFinalizado': dataFinalizado?.toIso8601String(),
+      'ultimaVezJogado': ultimaVezJogado?.toIso8601String(),
+    };
+  }
+
+  factory Jogo.fromMap(Map<String, dynamic> map) {
+    return Jogo(
+      id: map['id'],
+      nome: map['nome'],
+      capa: map['capa'],
+      dataLancamento: map['dataLancamento'] != null
+          ? DateTime.parse(map['dataLancamento'])
+          : null,
+      consoleId: map['consoleId'],
+      notaPessoal: map['notaPessoal'] ?? 0.0,
+      dataCompra: map['dataCompra'] != null
+          ? DateTime.parse(map['dataCompra'])
+          : null,
+      dataFinalizado: map['dataFinalizado'] != null
+          ? DateTime.parse(map['dataFinalizado'])
+          : null,
+      ultimaVezJogado: map['ultimaVezJogado'] != null
+          ? DateTime.parse(map['ultimaVezJogado'])
+          : null,
+    );
+  }
+}
+```
+
+### **acessorio.dart**
+```dart
+class Acessorio {
+  String id;
+  String nome;
+  String consoleId;
+  String descricao;
+  DateTime? ultimaVezTestado;
+
+  Acessorio({
+    required this.id,
+    required this.nome,
+    required this.consoleId,
+    this.descricao = '',
+    this.ultimaVezTestado,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'nome': nome,
+      'consoleId': consoleId,
+      'descricao': descricao,
+      'ultimaVezTestado': ultimaVezTestado?.toIso8601String(),
+    };
+  }
+
+  factory Acessorio.fromMap(Map<String, dynamic> map) {
+    return Acessorio(
+      id: map['id'],
+      nome: map['nome'],
+      consoleId: map['consoleId'],
+      descricao: map['descricao'],
+      ultimaVezTestado: map['ultimaVezTestado'] != null
+          ? DateTime.parse(map['ultimaVezTestado'])
+          : null,
+    );
+  }
+}
+```
+
+---
+
+## **4. Serviços**
+
+### **api_service.dart**
+Responsável por buscar dados de jogos de uma API gratuita (exemplo: RAWG ou outra). Substitua a URL pela API escolhida.
+
+```dart
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+class ApiService {
+  final String baseUrl = 'https://api.rawg.io/api'; // Exemplo, ajuste conforme a API
+  final String apiKey = 'SUA_CHAVE_API'; // Obtenha uma chave se necessário
+
+  Future<List<dynamic>> buscarJogos(String nome) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/games?search=$nome&key=$apiKey'),
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body)['results'];
+    } else {
+      throw Exception('Erro ao buscar jogos');
+    }
+  }
+}
+```
+
+### **database_service.dart**
+Gerencia o armazenamento local usando SQLite.
+
+```dart
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import '../models/console.dart';
+import '../models/jogo.dart';
+import '../models/acessorio.dart';
+
+class DatabaseService {
+  static final DatabaseService instance = DatabaseService._init();
+  static Database? _database;
+
+  DatabaseService._init();
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('meu_projeto.db');
+    return _database!;
+  }
+
+  Future<Database> _initDB(String filePath) async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, filePath);
+    return await openDatabase(path, version: 1, onCreate: _createDB);
+  }
+
+  Future _createDB(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE consoles (
+        id TEXT PRIMARY KEY,
+        nome TEXT,
+        foto TEXT,
+        dataLancamento TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE jogos (
+        id TEXT PRIMARY KEY,
+        nome TEXT,
+        capa TEXT,
+        dataLancamento TEXT,
+        consoleId TEXT,
+        notaPessoal REAL,
+        dataCompra TEXT,
+        dataFinalizado TEXT,
+        ultimaVezJogado TEXT,
+        FOREIGN KEY (consoleId) REFERENCES consoles (id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE acessorios (
+        id TEXT PRIMARY KEY,
+        nome TEXT,
+        consoleId TEXT,
+        descricao TEXT,
+        ultimaVezTestado TEXT,
+        FOREIGN KEY (consoleId) REFERENCES consoles (id)
+      )
+    ''');
+  }
+
+  // Métodos CRUD
+  Future<void> inserirConsole(Console console) async {
+    final db = await database;
+    await db.insert('consoles', console.toMap());
+  }
+
+  Future<List<Console>> buscarConsoles() async {
+    final db = await database;
+    final maps = await db.query('consoles');
+    return List.generate(maps.length, (i) => Console.fromMap(maps[i]));
+  }
+
+  Future<void> inserirJogo(Jogo jogo) async {
+    final db = await database;
+    await db.insert('jogos', jogo.toMap());
+  }
+
+  Future<List<Jogo>> buscarJogos() async {
+    final db = await database;
+    final maps = await db.query('jogos');
+    return List.generate(maps.length, (i) => Jogo.fromMap(maps[i]));
+  }
+
+  Future<void> inserirAcessorio(Acessorio acessorio) async {
+    final db = await database;
+    await db.insert('acessorios', acessorio.toMap());
+  }
+
+  Future<List<Acessorio>> buscarAcessorios() async {
+    final db = await database;
+    final maps = await db.query('acessorios');
+    return List.generate(maps.length, (i) => Acessorio.fromMap(maps[i]));
+  }
+}
+```
+
+---
+
+## **5. Telas**
+
+### **home_screen.dart**
+Tela inicial com botões de navegação.
+
+```dart
+import 'package:flutter/material.dart';
+
+class HomeScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Minha Coleção')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/consoles'),
+              child: Text('Consoles'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/jogos'),
+              child: Text('Jogos'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/acessorios'),
+              child: Text('Acessórios'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/import_export'),
+              child: Text('Importar/Exportar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+### **console_screen.dart**
+Tela para listar e cadastrar consoles.
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/console.dart';
+import '../services/database_service.dart';
+import '../widgets/console_form.dart';
+
+class ConsoleScreen extends StatefulWidget {
+  @override
+  _ConsoleScreenState createState() => _ConsoleScreenState();
+}
+
+class _ConsoleScreenState extends State<ConsoleScreen> {
+  List<Console> consoles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarConsoles();
+  }
+
+  void _carregarConsoles() async {
+    consoles = await DatabaseService.instance.buscarConsoles();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Consoles')),
+      body: ListView.builder(
+        itemCount: consoles.length,
+        itemBuilder: (context, index) {
+          return ListTile(
+            title: Text(consoles[index].nome),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _mostrarFormConsole(context),
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _mostrarFormConsole(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => ConsoleForm(
+        onSalvar: (console) async {
+          await DatabaseService.instance.inserirConsole(console);
+          _carregarConsoles();
+        },
+      ),
+    );
+  }
+}
+```
+
+### **jogo_screen.dart**
+Tela para listar e cadastrar jogos com busca na API.
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/jogo.dart';
+import '../services/database_service.dart';
+import '../widgets/jogo_form.dart';
+
+class JogoScreen extends StatefulWidget {
+  @override
+  _JogoScreenState createState() => _JogoScreenState();
+}
+
+class _JogoScreenState extends State<JogoScreen> {
+  List<Jogo> jogos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarJogos();
+  }
+
+  void _carregarJogos() async {
+    jogos = await DatabaseService.instance.buscarJogos();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Jogos')),
+      body: ListView.builder(
+        itemCount: jogos.length,
+        itemBuilder: (context, index) {
+          return ListTile(
+            title: Text(jogos[index].nome),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _mostrarFormJogo(context),
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _mostrarFormJogo(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => JogoForm(
+        onSalvar: (jogo) async {
+          await DatabaseService.instance.inserirJogo(jogo);
+          _carregarJogos();
+        },
+      ),
+    );
+  }
+}
+```
+
+### **acessorio_screen.dart**
+Tela para listar e cadastrar acessórios.
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/acessorio.dart';
+import '../services/database_service.dart';
+import '../widgets/acessorio_form.dart';
+
+class AcessorioScreen extends StatefulWidget {
+  @override
+  _AcessorioScreenState createState() => _AcessorioScreenState();
+}
+
+class _AcessorioScreenState extends State<AcessorioScreen> {
+  List<Acessorio> acessorios = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarAcessorios();
+  }
+
+  void _carregarAcessorios() async {
+    acessorios = await DatabaseService.instance.buscarAcessorios();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Acessórios')),
+      body: ListView.builder(
+        itemCount: acessorios.length,
+        itemBuilder: (context, index) {
+          return ListTile(
+            title: Text(acessorios[index].nome),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _mostrarFormAcessorio(context),
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+
+  void _mostrarFormAcessorio(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => AcessorioForm(
+        onSalvar: (acessorio) async {
+          await DatabaseService.instance.inserirAcessorio(acessorio);
+          _carregarAcessorios();
+        },
+      ),
+    );
+  }
+}
+```
+
+### **import_export_screen.dart**
+Tela para importar/exportar dados em JSON.
+
+```dart
+import 'package:flutterවන්න.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import '../services/database_service.dart';
+import '../models/console.dart';
+import '../models/jogo.dart';
+import '../models/acessorio.dart';
+
+class ImportExportScreen extends StatelessWidget {
+  Future<void> _exportarDados() async {
+    final consoles = await DatabaseService.instance.buscarConsoles();
+    final jogos = await DatabaseService.instance.buscarJogos();
+    final acessorios = await DatabaseService.instance.buscarAcessorios();
+
+    final dados = {
+      'consoles': consoles.map((c) => c.toMap()).toList(),
+      'jogos': jogos.map((j) => j.toMap()).toList(),
+      'acessorios': acessorios.map((a) => a.toMap()).toList(),
+    };
+
+    final jsonString = json.encode(dados);
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/colecao.json');
+    await file.writeAsString(jsonString);
+  }
+
+  Future<void> _importarDados() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/colecao.json');
+    if (await file.exists()) {
+      final jsonString = await file.readAsString();
+      final dados = json.decode(jsonString);
+
+      for (var consoleMap in dados['consoles']) {
+        final console = Console.fromMap(consoleMap);
+        await DatabaseService.instance.inserirConsole(console);
+      }
+      for (var jogoMap in dados['jogos']) {
+        final jogo = Jogo.fromMap(jogoMap);
+        await DatabaseService.instance.inserirJogo(jogo);
+      }
+      for (var acessorioMap in dados['acessorios']) {
+        final acessorio = Acessorio.fromMap(acessorioMap);
+        await DatabaseService.instance.inserirAcessorio(acessorio);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Importar/Exportar')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton(
+              onPressed: _exportarDados,
+              child: Text('Exportar Dados'),
+            ),
+            ElevatedButton(
+              onPressed: _importarDados,
+              child: Text('Importar Dados'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## **6. Widgets**
+
+### **console_form.dart**
+Formulário para cadastrar consoles.
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/console.dart';
+
+class ConsoleForm extends StatefulWidget {
+  final Function(Console) onSalvar;
+
+  ConsoleForm({required this.onSalvar});
+
+  @override
+  _ConsoleFormState createState() => _ConsoleFormState();
+}
+
+class _ConsoleFormState extends State<ConsoleForm> {
+  final _formKey = GlobalKey<FormState>();
+  String nome = '';
+  String foto = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextFormField(
+              decoration: InputDecoration(labelText: 'Nome do Console'),
+              onChanged: (value) => nome = value,
+              validator: (value) => value!.isEmpty ? 'Campo obrigatório' : null,
+            ),
+            TextFormField(
+              decoration: InputDecoration(labelText: 'Foto (URL)'),
+              onChanged: (value) => foto = value,
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                if (_formKey.currentState!.validate()) {
+                  final console = Console(
+                    id: DateTime.now().toString(),
+                    nome: nome,
+                    foto: foto,
+                  );
+                  widget.onSalvar(console);
+                  Navigator.pop(context);
+                }
+              },
+              child: Text('Salvar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+### **jogo_form.dart**
+Formulário para cadastrar jogos com busca na API.
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/jogo.dart';
+import '../services/api_service.dart';
+import '../services/database_service.dart';
+
+class JogoForm extends StatefulWidget {
+  final Function(Jogo) onSalvar;
+
+  JogoForm({required this.onSalvar});
+
+  @override
+  _JogoFormState createState() => _JogoFormState();
+}
+
+class _JogoFormState extends State<JogoForm> {
+  final _formKey = GlobalKey<FormState>();
+  String nome = '';
+  String capa = '';
+  DateTime? dataLancamento;
+  String consoleId = '';
+  double notaPessoal = 0.0;
+  DateTime? dataCompra;
+  DateTime? dataFinalizado;
+  DateTime? ultimaVezJogado;
+  final ApiService apiService = ApiService();
+  List<Console> consoles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarConsoles();
+  }
+
+  void _carregarConsoles() async {
+    consoles = await DatabaseService.instance.buscarConsoles();
+    if (consoles.isNotEmpty) {
+      setState(() {
+        consoleId = consoles[0].id;
+      });
+    }
+  }
+
+  void _buscarJogo(String nome) async {
+    try {
+      final resultados = await apiService.buscarJogos(nome);
+      if (resultados.isNotEmpty) {
+        final jogo = resultados[0];
+        setState(() {
+          this.nome = jogo['name'];
+          capa = jogo['background_image'] ?? '';
+          dataLancamento = jogo['released'] != null
+              ? DateTime.parse(jogo['released'])
+              : null;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao buscar jogo')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              TextFormField(
+                decoration: InputDecoration(labelText: 'Nome do Jogo'),
+                onChanged: (value) {
+                  nome = value;
+                  if (value.length > 3) _buscarJogo(value);
+                },
+                validator: (value) =>
+                    value!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              if (consoles.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  value: consoleId,
+                  decoration: InputDecoration(labelText: 'Console'),
+                  items: consoles
+                      .map((console) => DropdownMenuItem(
+                            value: console.id,
+                            child: Text(console.nome),
+                          ))
+                      .toList(),
+                  onChanged: (value) => consoleId = value!,
+                ),
+              TextFormField(
+                decoration: InputDecoration(labelText: 'Nota Pessoal (0-10)'),
+                keyboardType: TextInputType.number,
+                onChanged: (value) =>
+                    notaPessoal = double.tryParse(value) ?? 0.0,
+              ),
+              TextFormField(
+                decoration: InputDecoration(labelText: 'Capa (URL)'),
+                controller: TextEditingController(text: capa),
+                onChanged: (value) => capa = value,
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    final jogo = Jogo(
+                      id: DateTime.now().toString(),
+                      nome: nome,
+                      capa: capa,
+                      dataLancamento: dataLancamento,
+                      consoleId: consoleId,
+                      notaPessoal: notaPessoal,
+                      dataCompra: dataCompra,
+                      dataFinalizado: dataFinalizado,
+                      ultimaVezJogado: ultimaVezJogado,
+                    );
+                    widget.onSalvar(jogo);
+                    Navigator.pop(context);
+                  }
+                },
+                child: Text('Salvar'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+```
+
+### **acessorio_form.dart**
+Formulário para cadastrar acessórios.
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/acessorio.dart';
+import '../services/database_service.dart';
+
+class AcessorioForm extends StatefulWidget {
+  final Function(Acessorio) onSalvar;
+
+  AcessorioForm({required this.onSalvar});
+
+  @override
+  _AcessorioFormState createState() => _AcessorioFormState();
+}
+
+class _AcessorioFormState extends State<AcessorioForm> {
+  final _formKey = GlobalKey<FormState>();
+  String nome = '';
+  String consoleId = '';
+  String descricao = '';
+  List<Console> consoles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarConsoles();
+  }
+
+  void _carregarConsoles() async {
+    consoles = await DatabaseService.instance.buscarConsoles();
+    if (consoles.isNotEmpty) {
+      setState(() {
+        consoleId = consoles[0].id;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _formKey,
+      child: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextFormField(
+              decoration: InputDecoration(labelText: 'Nome do Acessório'),
+              onChanged: (value) => nome = value,
+              validator: (value) =>
+                  value!.isEmpty ? 'Campo obrigatório' : null,
+            ),
+            if (consoles.isNotEmpty)
+              DropdownButtonFormField<String>(
+                value: consoleId,
+                decoration: InputDecoration(labelText: 'Console'),
+                items: consoles
+                    .map((console) => DropdownMenuItem(
+                          value: console.id,
+                          child: Text(console.nome),
+                        ))
+                    .toList(),
+                onChanged: (value) => consoleId = value!,
+              ),
+            TextFormField(
+              decoration: InputDecoration(labelText: 'Descrição'),
+              onChanged: (value) => descricao = value,
+            ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                if (_formKey.currentState!.validate()) {
+                  final acessorio = Acessorio(
+                    id: DateTime.now().toString(),
+                    nome: nome,
+                    consoleId: consoleId,
+                    descricao: descricao,
+                  );
+                  widget.onSalvar(acessorio);
+                  Navigator.pop(context);
+                }
+              },
+              child: Text('Salvar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## **7. Configuração de Rotas**
+
+### **main.dart**
+Configure as rotas para navegação entre telas.
+
+```dart
+import 'package:flutter/material.dart';
+import 'screens/home_screen.dart';
+import 'screens/console_screen.dart';
+import 'screens/jogo_screen.dart';
+import 'screens/acessorio_screen.dart';
+import 'screens/import_export_screen.dart';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Minha Coleção',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => HomeScreen(),
+        '/consoles': (context) => ConsoleScreen(),
+        '/jogos': (context) => JogoScreen(),
+        '/acessorios': (context) => AcessorioScreen(),
+        '/import_export': (context) => ImportExportScreen(),
+      },
+    );
+  }
+}
+```
+
+---
+
+## **8. Considerações Finais**
+
+- **API de Jogos**: Use uma API gratuita como a RAWG (https://rawg.io/apidocs). Ajuste o `api_service.dart` com a URL e chave corretas.
+- **Campos de Data**: Para facilitar a entrada de datas (como data de compra ou finalização), adicione um `DatePicker` nos formulários.
+- **Melhorias na UI**: Adicione imagens, validações mais robustas e estilos personalizados.
+- **Gerenciamento de Estado**: Para projetos maiores, considere usar Provider ou Riverpod.
+- **Testes**: Implemente testes unitários para os serviços e widgets.
